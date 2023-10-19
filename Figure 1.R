@@ -1,0 +1,126 @@
+library(tibble)
+library(ggplot2)
+library(dplyr)
+library(vegan)
+library(cowplot)
+library(lsmeans)
+library(rstatix)
+library(ggbeeswarm)
+library(effectsize)
+library(ggpubr)
+
+#### Import Data ####
+#===================#
+
+## Un-normalized data ##
+
+feature_table_AD = readRDS("D:/OneDrive - University of Copenhagen/PhD/Projects/BGC_domain_amplicon_project/qiime_outputs/AD/redo/post_filt_feature_tables/AD_profiles_paired_redo_mean_OBU_table-filtered.rds") 
+
+feature_table_16S = readRDS("D:/OneDrive - University of Copenhagen/PhD/Projects/BGC_domain_amplicon_project/qiime_outputs/16S/redo/post_filt_feature_tables/16S_profiles_redo_mean_feature_table.rds") 
+
+## Meatdata ##
+
+metadata = read.table("D:/OneDrive - University of Copenhagen/PhD/Projects/BGC_domain_amplicon_project/Metadata/BGC_sample_metadata_noRepeats.txt", sep = "\t", header = TRUE, stringsAsFactors = TRUE) %>%
+  mutate(sample_type = case_when(caste_phase %in% c("YC", "MC", "OC", "C") ~ "Comb",
+                                 caste_phase %in% c("SW", "LW", "SS", "LS", "S") ~ "Gut"))
+
+levels(metadata$caste_phase) = c(levels(metadata$caste_phase), "W")
+
+metadata.sorted_oneS_W = metadata %>%
+  mutate(caste_phase2 = caste_phase) %>%
+  mutate(caste_phase2 = replace(caste_phase2, caste_phase2 %in% c("S", "SS", "LS"), "S"),
+         caste_phase2 = replace(caste_phase2, caste_phase2 %in% c("SW", "LW"), "W"))
+
+## Removing Microtermes ##
+
+feature_table_16S_noMicro = feature_table_16S %>%
+  rownames_to_column() %>%
+  left_join(metadata[colnames(metadata) %in% c("sample.id", "genus")], by = c("rowname" = "sample.id")) %>%
+  column_to_rownames() %>%
+  filter(genus != "Microtermes") %>%
+  dplyr::select(!genus)
+
+feature_table_AD_noMicro = feature_table_AD %>%
+  rownames_to_column() %>%
+  left_join(metadata[colnames(metadata) %in% c("sample.id", "genus")], by = c("rowname" = "sample.id")) %>%
+  column_to_rownames() %>%
+  filter(genus != "Microtermes") %>%
+  dplyr::select(!genus)
+
+#### Import Data end ####
+
+
+#### Calculate Shannon diversity ####
+#=====================================#
+
+### 16S ###
+
+# Calculate the diversity index
+shannon_df_16S = as.data.frame(vegan::diversity(feature_table_16S_noMicro, index = "shannon")) %>%
+  rename(shannon_16S = `vegan::diversity(feature_table_16S_noMicro, index = "shannon")`) %>%
+  rownames_to_column() %>%
+  left_join(metadata.sorted_oneS_W, by = c("rowname" = "sample.id")) %>%
+  column_to_rownames()
+shannon_df_16S$caste_phase = factor(shannon_df_16S$caste_phase, levels = c("C", "YC", "MC", "OC", "SW", "LW", "SS", "LS", "S"))
+shannon_df_16S$caste_phase2 = factor(shannon_df_16S$caste_phase2, levels = c("C", "YC", "MC", "OC", "W", "S"))
+
+### AD ###
+
+# Calculate the diversity index
+shannon_df_AD = as.data.frame(vegan::diversity(feature_table_AD_noMicro, index = "shannon")) %>%
+  rename(shannon_AD = `vegan::diversity(feature_table_AD_noMicro, index = "shannon")`) %>%
+  rownames_to_column() %>%
+  left_join(metadata.sorted_oneS_W, by = c("rowname" = "sample.id")) %>%
+  column_to_rownames(var = "rowname")
+shannon_df_AD$caste_phase = factor(shannon_df_AD$caste_phase, levels = c("C", "YC", "MC", "OC", "SW", "LW", "SS", "LS", "S"))
+shannon_df_AD$caste_phase2 = factor(shannon_df_AD$caste_phase2, levels = c("C", "YC", "MC", "OC", "W", "S"))
+#### Calculate Shannon diversity end ####
+
+#### Combined 16S and AD plot ####
+#================================#
+
+comb_16S_df = shannon_df_16S %>%
+  rename(shannon = shannon_16S) %>%
+  mutate(data = "16S")
+
+comb_AD_df = shannon_df_AD %>%
+  rename(shannon = shannon_AD) %>%
+  mutate(data = "AD")
+
+comb_16S_AD_df = rbind(comb_16S_df, comb_AD_df)
+
+comb_16S_AD = ggplot(comb_16S_AD_df, aes(x = caste_phase2, y = shannon, shape = sample_type))+
+  geom_boxplot(outlier.shape = NA)+
+  geom_beeswarm(cex = 2, aes(colour = species), size = 3)+
+  facet_wrap(~data, scales = "fixed", nrow = 1)+
+  xlab("Sample type")+
+  ylab("Shannon diversity")+
+  scale_colour_manual(values = cols)+
+  theme_pubr()+
+  theme(axis.text.y = element_text(colour = "black", size = 18), 
+        axis.text.x = element_text(colour = "black", size = 18), 
+        legend.position = "none", axis.title.y = element_text(size = 18), 
+        axis.title.x = element_text(size = 18, colour = "black"))
+#### Combined 16S and AD plot end ####
+
+#### Plotting the correlation ####
+#================================#
+
+cols = c("bellicosus" = "#E77675", "subhyalinus" = "#A31E23", 
+         "cavithorax" = "#E3A86C", "guinensis" = "#BA7328", 
+         "Species A" = "#91CB7B", "Species B" = "#3B7538", 
+         "militaris-spiniger" = "#8499C7",
+         "Gut" = "#D7DF23", "Comb" = "#8B5E3C")
+
+shannon_AD_16S_lm_plot = ggplot(shannon_df, aes(x = shannon_16S, y = shannon_AD, colour = species, shape = sample_type))+
+  geom_point(size = 2.5)+
+  scale_colour_manual(values = cols) +
+  geom_smooth(method = "lm", formula = y ~ x, aes(x = shannon_16S, y = shannon_AD, colour = sample_type), inherit.aes = F, linewidth = 2, se = T)+
+  xlab("Shannon diversity for 16S ASVs")+
+  ylab("Shannon diversity for AD OBUs")+
+  theme_pubr()+
+  theme(axis.text.y = element_text(colour = "black", size = 18), 
+        axis.text.x = element_text(colour = "black", size = 18), 
+        legend.position = "none", axis.title.y = element_text(size = 18), 
+        axis.title.x = element_text(size = 18, colour = "black"))
+#### Plotting the correlation end ####
