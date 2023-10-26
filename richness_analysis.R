@@ -71,7 +71,7 @@ chao_plot_16S = ggplot(chao_df_16S, aes(x = caste_phase, y = chao1_16S, shape = 
   geom_boxplot(outlier.shape = NA)+
   geom_beeswarm(cex = 2, aes(colour = species), size = 3)+
   xlab("Sample type")+
-  ylab("Chao 1 diversity")+
+  ylab("Chao 1 richness")+
   theme_pubclean()+
   theme(axis.text.y = element_text(colour = "black", size = 18), 
         axis.text.x = element_text(colour = "black", size = 18), 
@@ -103,7 +103,7 @@ chao_plot_AD = ggplot(chao_df_AD, aes(x = caste_phase, y = chao1_AD, shape = sam
   geom_boxplot(outlier.shape = NA)+
   geom_beeswarm(cex = 2, aes(colour = species), size = 3)+
   xlab("Sample type")+
-  ylab("Shannon diversity")+
+  ylab("Chao1 richness")+
   theme_pubclean()+
   theme(axis.text.y = element_text(colour = "black", size = 18), 
         axis.text.x = element_text(colour = "black", size = 18), 
